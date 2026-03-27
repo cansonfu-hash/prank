@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>重要通知</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+
+    .bg-text {
+      position: fixed;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 6vw;
+      color: rgba(255,255,255,0.08);
+      font-weight: 900;
+      text-align: center;
+      pointer-events: none;
+      z-index: 0;
+      line-height: 1.4;
+    }
+
+    .overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes slideIn {
+      from { transform: scale(0.8) translateY(-20px); opacity: 0; }
+      to { transform: scale(1) translateY(0); opacity: 1; }
+    }
+
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      10%,30%,50%,70%,90% { transform: translateX(-6px); }
+      20%,40%,60%,80% { transform: translateX(6px); }
+    }
+
+    @keyframes bounce {
+      0%,100% { transform: scale(1); }
+      50% { transform: scale(1.05); }
+    }
+
+    .dialog {
+      background: #fff;
+      border-radius: 16px;
+      padding: 32px 28px 24px;
+      max-width: 360px;
+      width: 90%;
+      text-align: center;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.3);
+      animation: slideIn 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+      position: relative;
+    }
+
+    .dialog.shake {
+      animation: shake 0.5s ease;
+    }
+
+    .dialog-icon {
+      font-size: 48px;
+      margin-bottom: 12px;
+    }
+
+    .dialog-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: #1a1a2e;
+      margin-bottom: 8px;
+    }
+
+    .dialog-subtitle {
+      font-size: 14px;
+      color: #888;
+      margin-bottom: 24px;
+      line-height: 1.5;
+    }
+
+    .btn-group {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 12px 0;
+      border-radius: 10px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s ease;
+    }
+
+    .btn:active {
+      transform: scale(0.96);
+    }
+
+    .btn-yes {
+      background: #667eea;
+      color: white;
+    }
+
+    .btn-yes:hover {
+      background: #5a6fd6;
+    }
+
+    .btn-no {
+      background: #f1f3f5;
+      color: #444;
+    }
+
+    .btn-no:hover {
+      background: #e2e6ea;
+    }
+
+    .counter-badge {
+      position: absolute;
+      top: -10px;
+      right: -10px;
+      background: #e74c3c;
+      color: white;
+      border-radius: 50%;
+      width: 28px;
+      height: 28px;
+      font-size: 13px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      display: none;
+    }
+
+    .progress-bar {
+      width: 100%;
+      height: 4px;
+      background: #eee;
+      border-radius: 2px;
+      margin-bottom: 20px;
+      overflow: hidden;
+      display: none;
+    }
+
+    .progress-fill {
+      height: 100%;
+      background: linear-gradient(90deg, #667eea, #764ba2);
+      border-radius: 2px;
+      transition: width 0.3s ease;
+    }
+
+    /* 最终胜利界面 */
+    .victory {
+      display: none;
+      text-align: center;
+      color: white;
+      z-index: 20;
+      position: relative;
+    }
+
+    .victory h1 {
+      font-size: 36px;
+      font-weight: 900;
+      margin-bottom: 16px;
+      text-shadow: 0 2px 10px rgba(0,0,0,0.3);
+    }
+
+    .victory p {
+      font-size: 18px;
+      opacity: 0.9;
+      margin-bottom: 24px;
+    }
+
+    .confetti {
+      position: fixed;
+      width: 10px;
+      height: 10px;
+      top: -10px;
+      animation: fall linear forwards;
+      z-index: 5;
+      border-radius: 2px;
+    }
+
+    @keyframes fall {
+      to {
+        transform: translateY(110vh) rotate(720deg);
+        opacity: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+
+<div class="bg-text">小唐是笨蛋<br>小唐是笨蛋<br>小唐是笨蛋</div>
+
+<!-- 第一个弹窗 -->
+<div class="overlay" id="dialog1">
+  <div class="dialog" id="dialogBox1">
+    <div class="dialog-icon">🤔</div>
+    <div class="dialog-title">重要问题确认</div>
+    <div class="dialog-subtitle">请认真思考后作答<br>这是一道非常重要的测试题</div>
+    <p style="font-size:18px; font-weight:700; color:#333; margin-bottom:24px;">小唐是笨蛋吗？</p>
+    <div class="btn-group">
+      <button class="btn btn-yes" onclick="clickYes1()">✅ 是</button>
+      <button class="btn btn-no" onclick="clickNo1()">❌ 不是</button>
+    </div>
+  </div>
+</div>
+
+<!-- 第二个弹窗（点"不是"后出现，按钮位置互换） -->
+<div class="overlay" id="dialog2" style="display:none;">
+  <div class="dialog" id="dialogBox2">
+    <div class="counter-badge" id="noCounter">1</div>
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill" style="width:0%"></div>
+    </div>
+    <div class="dialog-icon" id="d2icon">😮</div>
+    <div class="dialog-title" id="d2title">答案好像不太对哦</div>
+    <div class="dialog-subtitle" id="d2subtitle">系统检测到你的回答存在严重错误<br>请重新确认！</div>
+    <p style="font-size:18px; font-weight:700; color:#e74c3c; margin-bottom:24px;" id="d2question">小唐，你真的确定不是吗？</p>
+    <div class="btn-group" id="d2btns">
+      <button class="btn btn-no" onclick="clickNo2()">❌ 不是</button>
+      <button class="btn btn-yes" onclick="clickYes2()">✅ 是</button>
+    </div>
+  </div>
+</div>
+
+<!-- 最终画面：点"是"后 -->
+<div class="victory" id="victory">
+  <h1>🎉 答对了！</h1>
+  <p>系统已记录你的诚实回答 😄</p>
+  <p style="font-size:14px; opacity:0.7;">by 你的好朋友 💕</p>
+</div>
+
+<script>
+  let noCount = 0;
+
+  const stages = [
+    { icon:"😮", title:"答案好像不太对哦", sub:"系统检测到你的回答存在严重错误\n请重新确认！", q:"小唐，你真的确定不是吗？" },
+    { icon:"😤", title:"再想想！", sub:"你的大脑好像宕机了\n请重启后再试", q:"重新考虑一下？小唐真的是笨蛋哦！" },
+    { icon:"🧐", title:"哲学难题探讨中...", sub:"这道题连哲学家都会选「是」\n你为什么这么固执？", q:"Are you sure? 真的不是吗？" },
+    { icon:"😱", title:"警告！警告！", sub:"再点「不是」系统将崩溃\n（不是真的，但你别试）", q:"最后机会——小唐是不是笨蛋？" },
+    { icon:"🤡", title:"好吧，随便你", sub:"系统已放弃劝说\n不过你心里清楚答案的…", q:"行吧行吧，你说不是就不是咯 😏" },
+  ];
+
+  function clickYes1() {
+    document.getElementById('dialog1').style.display = 'none';
+    showVictory();
+  }
+
+  function clickNo1() {
+    document.getElementById('dialog1').style.display = 'none';
+    noCount = 0;
+    showDialog2();
+  }
+
+  function showDialog2() {
+    const d = document.getElementById('dialog2');
+    d.style.display = 'flex';
+    updateDialog2();
+  }
+
+  function updateDialog2() {
+    const s = stages[Math.min(noCount, stages.length - 1)];
+    const box = document.getElementById('dialogBox2');
+    const counter = document.getElementById('noCounter');
+    const bar = document.getElementById('progressBar');
+    const fill = document.getElementById('progressFill');
+
+    document.getElementById('d2icon').textContent = s.icon;
+    document.getElementById('d2title').textContent = s.title;
+    document.getElementById('d2subtitle').textContent = s.sub;
+    document.getElementById('d2question').textContent = s.q;
+
+    if (noCount > 0) {
+      counter.style.display = 'flex';
+      counter.textContent = noCount;
+      bar.style.display = 'block';
+      fill.style.width = Math.min(noCount * 20, 100) + '%';
+    }
+
+    // 按钮位置随机互换（增加捉弄感）
+    if (noCount >= 2) {
+      const btns = document.getElementById('d2btns');
+      if (Math.random() > 0.5) {
+        btns.innerHTML = `<button class="btn btn-yes" onclick="clickYes2()">✅ 是</button><button class="btn btn-no" onclick="clickNo2()">❌ 不是</button>`;
+      } else {
+        btns.innerHTML = `<button class="btn btn-no" onclick="clickNo2()">❌ 不是</button><button class="btn btn-yes" onclick="clickYes2()">✅ 是</button>`;
+      }
+    }
+
+    // 抖动动画
+    box.classList.remove('shake');
+    void box.offsetWidth;
+    box.classList.add('shake');
+    setTimeout(() => box.classList.remove('shake'), 600);
+  }
+
+  function clickNo2() {
+    noCount++;
+    updateDialog2();
+  }
+
+  function clickYes2() {
+    document.getElementById('dialog2').style.display = 'none';
+    showVictory();
+  }
+
+  function showVictory() {
+    const v = document.getElementById('victory');
+    v.style.display = 'block';
+    spawnConfetti();
+  }
+
+  function spawnConfetti() {
+    const colors = ['#667eea','#764ba2','#f093fb','#f5576c','#ffeaa7','#00b894','#fd79a8'];
+    for (let i = 0; i < 60; i++) {
+      setTimeout(() => {
+        const el = document.createElement('div');
+        el.className = 'confetti';
+        el.style.left = Math.random() * 100 + 'vw';
+        el.style.background = colors[Math.floor(Math.random() * colors.length)];
+        el.style.width = (8 + Math.random() * 8) + 'px';
+        el.style.height = (8 + Math.random() * 8) + 'px';
+        el.style.animationDuration = (1.5 + Math.random() * 2) + 's';
+        el.style.animationDelay = '0s';
+        document.body.appendChild(el);
+        setTimeout(() => el.remove(), 4000);
+      }, i * 50);
+    }
+  }
+</script>
+</body>
+</html>
