@@ -11,9 +11,27 @@ import json
 import shutil
 import subprocess
 from dataclasses import dataclass, field
+from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
 from . import config
+
+# 钉钉是国内时间，判断"今天"默认用东八区。
+DEFAULT_TZ = "Asia/Shanghai"
+
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:  # pragma: no cover - 3.8 及以下
+    ZoneInfo = None  # type: ignore[assignment]
+
+
+def _tz(name: str = DEFAULT_TZ):
+    if ZoneInfo is not None:
+        try:
+            return ZoneInfo(name)
+        except Exception:  # noqa: BLE001 - 没有 tzdata 时兜底
+            pass
+    return timezone(timedelta(hours=8))  # 兜底 +08:00
 
 
 class DwsError(RuntimeError):
@@ -182,6 +200,72 @@ def list_messages(
     if limit is not None:
         messages = messages[:limit]
     return messages
+
+
+def parse_timestamp(raw: str, tzname: str = DEFAULT_TZ) -> datetime | None:
+    """把消息时间戳解析为带时区的 datetime；无法解析返回 None。
+
+    兼容：毫秒/秒级 epoch，以及常见的字符串日期格式。
+    """
+    if not raw:
+        return None
+    tz = _tz(tzname)
+    s = str(raw).strip()
+
+    # 数字 epoch（秒或毫秒）
+    cleaned = s.replace(".", "", 1)
+    if cleaned.isdigit():
+        val = float(s)
+        if val > 1e12:  # 毫秒
+            val /= 1000.0
+        try:
+            return datetime.fromtimestamp(val, tz)
+        except (OverflowError, OSError, ValueError):
+            return None
+
+    # 常见字符串格式
+    for fmt in (
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y/%m/%d %H:%M:%S",
+        "%Y/%m/%d %H:%M",
+        "%Y-%m-%dT%H:%M:%S",
+    ):
+        try:
+            return datetime.strptime(s, fmt).replace(tzinfo=tz)
+        except ValueError:
+            continue
+
+    try:
+        dt = datetime.fromisoformat(s)
+        return dt.replace(tzinfo=tz) if dt.tzinfo is None else dt
+    except ValueError:
+        return None
+
+
+def filter_by_date(
+    messages: list[Message],
+    target: date | None = None,
+    tzname: str = DEFAULT_TZ,
+) -> tuple[list[Message], int]:
+    """筛选出指定日期（默认今天，东八区）的消息。
+
+    Returns:
+        (筛选后的消息, 时间戳无法解析而被排除的条数)
+    """
+    tz = _tz(tzname)
+    if target is None:
+        target = datetime.now(tz).date()
+    kept: list[Message] = []
+    unparsed = 0
+    for m in messages:
+        dt = parse_timestamp(m.timestamp, tzname)
+        if dt is None:
+            unparsed += 1
+            continue
+        if dt.astimezone(tz).date() == target:
+            kept.append(m)
+    return kept, unparsed
 
 
 def send_message(conversation_id: str, text: str) -> None:

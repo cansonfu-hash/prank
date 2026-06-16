@@ -67,6 +67,12 @@ export ANTHROPIC_API_KEY=sk-ant-xxxx
 在项目上一级目录运行（让 `dingtalk_summarizer` 作为包被导入）：
 
 ```bash
+# 只汇总今日（东八区）的消息
+python -m dingtalk_summarizer -c <CONV_ID> --today
+
+# 汇总指定某一天的消息
+python -m dingtalk_summarizer -c <CONV_ID> --date 2026-06-16
+
 # 拉取全部消息并打印 Markdown 汇总
 python -m dingtalk_summarizer --conversation-id <CONV_ID>
 
@@ -93,6 +99,8 @@ python -m dingtalk_summarizer -c <CONV_ID> -m claude-opus-4-8
 |------|------|
 | `-c, --conversation-id` | （必填）钉钉群会话 ID；**可重复指定或用逗号分隔**以一次汇总多个群 |
 | `-n, --limit` | 最多拉取的消息条数；不填则自动翻页拉全部 |
+| `--today` | 只汇总今日（东八区）的消息 |
+| `--date YYYY-MM-DD` | 只汇总指定日期（东八区）的消息 |
 | `-m, --model` | Claude 模型，默认 `claude-opus-4-8` |
 | `-o, --output` | 把 Markdown 写入文件 |
 | `--json` | 把结构化结果写入 JSON 文件（单群=对象，多群={会话ID: 结果}） |

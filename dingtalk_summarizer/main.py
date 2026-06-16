@@ -12,9 +12,10 @@ import argparse
 import sys
 
 import json
+from datetime import datetime
 
 from . import config
-from .dingtalk_client import DwsError, list_messages, send_message
+from .dingtalk_client import DwsError, filter_by_date, list_messages, send_message
 from .summarizer import render_combined, render_markdown, summarize_messages
 
 
@@ -37,6 +38,18 @@ def build_parser() -> argparse.ArgumentParser:
         type=int,
         default=None,
         help="最多拉取的消息条数；不指定则自动翻页拉取全部",
+    )
+    p.add_argument(
+        "--today",
+        action="store_true",
+        help="只汇总今日（东八区）的消息",
+    )
+    p.add_argument(
+        "--date",
+        dest="date",
+        default=None,
+        metavar="YYYY-MM-DD",
+        help="只汇总指定日期（东八区）的消息，例如 2026-06-16",
     )
     p.add_argument(
         "--model",
@@ -79,6 +92,18 @@ def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     conversation_ids = _expand_ids(args.conversation_id)
 
+    # 解析日期过滤目标
+    target_date = None
+    if args.date:
+        try:
+            target_date = datetime.strptime(args.date, "%Y-%m-%d").date()
+        except ValueError:
+            print(f"[错误] --date 格式应为 YYYY-MM-DD，收到：{args.date}", file=sys.stderr)
+            return 2
+    elif args.today:
+        target_date = None  # filter_by_date 默认取今天
+    do_date_filter = args.today or args.date is not None
+
     # (conversation_id, message_count, KeyInfo, per_group_markdown)
     results: list[tuple[str, int, object, str]] = []
 
@@ -90,8 +115,15 @@ def main(argv: list[str] | None = None) -> int:
             print(f"[错误] 拉取会话 {cid} 失败：\n{exc}", file=sys.stderr)
             return 2
 
+        if do_date_filter:
+            messages, unparsed = filter_by_date(messages, target_date)
+            label = args.date or "今日"
+            note = f"（{unparsed} 条因时间戳无法解析被排除）" if unparsed else ""
+            print(f"· 会话 {cid}：按 {label} 过滤后剩 {len(messages)} 条{note}",
+                  file=sys.stderr)
+
         if not messages:
-            print(f"[提示] 会话 {cid} 没有拉取到任何消息，已跳过。", file=sys.stderr)
+            print(f"[提示] 会话 {cid} 没有可汇总的消息，已跳过。", file=sys.stderr)
             continue
 
         print(
