@@ -11,9 +11,11 @@ from __future__ import annotations
 import argparse
 import sys
 
+import json
+
 from . import config
 from .dingtalk_client import DwsError, list_messages, send_message
-from .summarizer import render_markdown, summarize_messages
+from .summarizer import render_combined, render_markdown, summarize_messages
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -24,8 +26,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument(
         "--conversation-id",
         "-c",
+        action="append",
         required=True,
-        help="钉钉群会话 ID（dws 中的 --conversation-id）",
+        metavar="CONV_ID",
+        help="钉钉群会话 ID；可重复指定或用逗号分隔以一次汇总多个群",
     )
     p.add_argument(
         "--limit",
@@ -60,49 +64,79 @@ def build_parser() -> argparse.ArgumentParser:
     return p
 
 
+def _expand_ids(raw: list[str]) -> list[str]:
+    """把 ["a,b", "c"] 这种展开成 ["a", "b", "c"]，去重保序。"""
+    ids: list[str] = []
+    for item in raw:
+        for part in item.split(","):
+            part = part.strip()
+            if part and part not in ids:
+                ids.append(part)
+    return ids
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
+    conversation_ids = _expand_ids(args.conversation_id)
 
-    try:
-        print(f"· 正在拉取会话 {args.conversation_id} 的消息 …", file=sys.stderr)
-        messages = list_messages(args.conversation_id, limit=args.limit)
-    except DwsError as exc:
-        print(f"[错误] 拉取消息失败：\n{exc}", file=sys.stderr)
-        return 2
+    # (conversation_id, message_count, KeyInfo, per_group_markdown)
+    results: list[tuple[str, int, object, str]] = []
 
-    if not messages:
-        print("[提示] 没有拉取到任何消息。", file=sys.stderr)
+    for cid in conversation_ids:
+        try:
+            print(f"· 正在拉取会话 {cid} 的消息 …", file=sys.stderr)
+            messages = list_messages(cid, limit=args.limit)
+        except DwsError as exc:
+            print(f"[错误] 拉取会话 {cid} 失败：\n{exc}", file=sys.stderr)
+            return 2
+
+        if not messages:
+            print(f"[提示] 会话 {cid} 没有拉取到任何消息，已跳过。", file=sys.stderr)
+            continue
+
+        print(
+            f"· 会话 {cid}：已拉取 {len(messages)} 条消息，正在调用 {args.model} 汇总 …",
+            file=sys.stderr,
+        )
+        try:
+            info = summarize_messages(messages, model=args.model)
+        except Exception as exc:  # noqa: BLE001 - 给用户一个清晰的错误出口
+            print(f"[错误] 会话 {cid} 调用模型失败：{exc}", file=sys.stderr)
+            return 3
+
+        per_group_md = render_markdown(info, cid, len(messages))
+        results.append((cid, len(messages), info, per_group_md))
+
+    if not results:
+        print("[提示] 没有任何群产生汇总。", file=sys.stderr)
         return 1
 
-    print(f"· 已拉取 {len(messages)} 条消息，正在调用 {args.model} 进行汇总 …",
-          file=sys.stderr)
-    try:
-        info = summarize_messages(messages, model=args.model)
-    except Exception as exc:  # noqa: BLE001 - 给用户一个清晰的错误出口
-        print(f"[错误] 调用模型失败：{exc}", file=sys.stderr)
-        return 3
-
-    markdown = render_markdown(info, args.conversation_id, len(messages))
+    combined = render_combined([(c, n, info) for c, n, info, _ in results])
 
     if args.output:
         with open(args.output, "w", encoding="utf-8") as f:
-            f.write(markdown)
+            f.write(combined)
         print(f"· Markdown 汇总已写入 {args.output}", file=sys.stderr)
     else:
-        print(markdown)
+        print(combined)
 
     if args.json_path:
+        if len(results) == 1:
+            payload = results[0][2].model_dump()
+        else:
+            payload = {cid: info.model_dump() for cid, _, info, _ in results}
         with open(args.json_path, "w", encoding="utf-8") as f:
-            f.write(info.model_dump_json(indent=2, exclude_none=False))
+            json.dump(payload, f, ensure_ascii=False, indent=2)
         print(f"· 结构化结果已写入 {args.json_path}", file=sys.stderr)
 
     if args.send_back:
-        try:
-            send_message(args.conversation_id, markdown)
-            print("· 汇总已回传到群里。", file=sys.stderr)
-        except DwsError as exc:
-            print(f"[错误] 回传失败：{exc}", file=sys.stderr)
-            return 4
+        for cid, _, _, per_group_md in results:
+            try:
+                send_message(cid, per_group_md)
+                print(f"· 汇总已回传到群 {cid}。", file=sys.stderr)
+            except DwsError as exc:
+                print(f"[错误] 回传到群 {cid} 失败：{exc}", file=sys.stderr)
+                return 4
 
     return 0
 

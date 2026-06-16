@@ -79,6 +79,10 @@ python -m dingtalk_summarizer -c <CONV_ID> --json result.json
 # 汇总后把结果发回群里
 python -m dingtalk_summarizer -c <CONV_ID> --send-back
 
+# 一次汇总多个群（可重复 -c，或逗号分隔）
+python -m dingtalk_summarizer -c <CONV_A> -c <CONV_B> -o report.md
+python -m dingtalk_summarizer -c <CONV_A>,<CONV_B>
+
 # 指定模型
 python -m dingtalk_summarizer -c <CONV_ID> -m claude-opus-4-8
 ```
@@ -87,12 +91,22 @@ python -m dingtalk_summarizer -c <CONV_ID> -m claude-opus-4-8
 
 | 参数 | 说明 |
 |------|------|
-| `-c, --conversation-id` | （必填）钉钉群会话 ID |
+| `-c, --conversation-id` | （必填）钉钉群会话 ID；**可重复指定或用逗号分隔**以一次汇总多个群 |
 | `-n, --limit` | 最多拉取的消息条数；不填则自动翻页拉全部 |
 | `-m, --model` | Claude 模型，默认 `claude-opus-4-8` |
 | `-o, --output` | 把 Markdown 写入文件 |
-| `--json` | 把结构化结果写入 JSON 文件 |
-| `--send-back` | 把汇总作为消息发回群里 |
+| `--json` | 把结构化结果写入 JSON 文件（单群=对象，多群={会话ID: 结果}） |
+| `--send-back` | 把汇总作为消息发回各自的群 |
+
+> 多个群时，Markdown 会合并成一份报告（一个总标题 + 每群一节）；`--send-back` 则把每个群自己的汇总分别发回该群。
+
+## 运行测试
+
+```bash
+python -m unittest discover -s dingtalk_summarizer/tests -t .
+```
+
+消息解析相关测试仅依赖标准库；汇总/渲染相关测试需要安装 `pydantic`。
 
 ## 环境变量
 

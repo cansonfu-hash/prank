@@ -8,13 +8,15 @@
 """
 from __future__ import annotations
 
-from typing import Iterable
+from typing import TYPE_CHECKING, Iterable
 
-import anthropic
 from pydantic import BaseModel, Field
 
 from . import config
 from .dingtalk_client import Message
+
+if TYPE_CHECKING:  # 仅类型检查时需要，运行期惰性导入，便于无 SDK 环境下测试纯函数
+    import anthropic
 
 
 # --------------------------- 结构化输出模型 ---------------------------
@@ -71,7 +73,7 @@ def _chunk_messages(messages: list[Message]) -> list[list[Message]]:
     return chunks
 
 
-def _summarize_chunk(client: anthropic.Anthropic, model: str, transcript: str) -> str:
+def _summarize_chunk(client: "anthropic.Anthropic", model: str, transcript: str) -> str:
     """对单个分块产出一段纯文本粗摘要（map 阶段）。"""
     with client.messages.stream(
         model=model,
@@ -97,9 +99,11 @@ def _summarize_chunk(client: anthropic.Anthropic, model: str, transcript: str) -
 def summarize_messages(
     messages: list[Message],
     model: str | None = None,
-    client: anthropic.Anthropic | None = None,
+    client: "anthropic.Anthropic | None" = None,
 ) -> KeyInfo:
     """对群消息做汇总与关键信息提取，返回结构化结果。"""
+    import anthropic
+
     model = model or config.DEFAULT_MODEL
     client = client or anthropic.Anthropic()
 
@@ -143,32 +147,21 @@ def summarize_messages(
 
 
 # --------------------------- 渲染为 Markdown ---------------------------
-def render_markdown(info: KeyInfo, conversation_id: str, message_count: int) -> str:
-    lines = [
-        "# 钉钉群消息汇总",
-        "",
-        f"- 会话 ID：`{conversation_id}`",
-        f"- 消息条数：{message_count}",
-        "",
-        "## 总结",
-        "",
-        info.summary or "（无）",
-        "",
-    ]
+def _render_sections(info: KeyInfo, base_level: int) -> list[str]:
+    """渲染"总结 + 各关键信息"小节，标题层级从 base_level 开始。"""
+    h = "#" * base_level
+    lines: list[str] = [f"{h} 总结", "", info.summary or "（无）", ""]
 
     def section(title: str, items: list[str]) -> None:
-        lines.append(f"## {title}")
+        lines.append(f"{h} {title}")
         lines.append("")
-        if items:
-            lines.extend(f"- {x}" for x in items)
-        else:
-            lines.append("（无）")
+        lines.extend(f"- {x}" for x in items) if items else lines.append("（无）")
         lines.append("")
 
     section("主要话题", info.topics)
     section("结论 / 决定", info.decisions)
 
-    lines.append("## 待办事项")
+    lines.append(f"{h} 待办事项")
     lines.append("")
     if info.action_items:
         for a in info.action_items:
@@ -177,7 +170,7 @@ def render_markdown(info: KeyInfo, conversation_id: str, message_count: int) -> 
                 extra.append(f"负责人：{a.owner}")
             if a.due:
                 extra.append(f"截止：{a.due}")
-            suffix = f"（{ '；'.join(extra) }）" if extra else ""
+            suffix = f"（{'；'.join(extra)}）" if extra else ""
             lines.append(f"- [ ] {a.task}{suffix}")
     else:
         lines.append("（无）")
@@ -186,5 +179,35 @@ def render_markdown(info: KeyInfo, conversation_id: str, message_count: int) -> 
     section("待解决的问题", info.open_questions)
     section("重要时间点", info.important_dates)
     section("相关链接", info.mentioned_links)
+    return lines
 
+
+def render_markdown(info: KeyInfo, conversation_id: str, message_count: int) -> str:
+    """单个群的完整 Markdown 报告。"""
+    lines = [
+        "# 钉钉群消息汇总",
+        "",
+        f"- 会话 ID：`{conversation_id}`",
+        f"- 消息条数：{message_count}",
+        "",
+        *_render_sections(info, base_level=2),
+    ]
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def render_combined(results: list[tuple[str, int, KeyInfo]]) -> str:
+    """多个群合并为一份报告：一个总标题 + 每群一节。
+
+    Args:
+        results: [(conversation_id, message_count, KeyInfo), ...]
+    """
+    if len(results) == 1:
+        cid, count, info = results[0]
+        return render_markdown(info, cid, count)
+
+    lines = [f"# 钉钉群消息汇总（共 {len(results)} 个群）", ""]
+    for cid, count, info in results:
+        lines.append(f"## 群 `{cid}`（{count} 条）")
+        lines.append("")
+        lines.extend(_render_sections(info, base_level=3))
     return "\n".join(lines).rstrip() + "\n"
